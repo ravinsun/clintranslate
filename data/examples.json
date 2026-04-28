@@ -1,0 +1,50 @@
+[
+  {
+    "id": "1",
+    "sas": "PROC SORT DATA=adlb OUT=adlb_sorted; BY USUBJID PARAMCD VISITNUM; RUN;",
+    "python": "adlb_sorted = adlb.sort_values(by=['USUBJID', 'PARAMCD', 'VISITNUM']).reset_index(drop=True)",
+    "description": "Sort dataset by multiple keys"
+  },
+  {
+    "id": "2",
+    "sas": "PROC MEANS DATA=adlb N MEAN STD MIN MAX; CLASS TRTA PARAMCD; VAR AVAL; RUN;",
+    "python": "summary = adlb.groupby(['TRTA', 'PARAMCD'])['AVAL'].agg(['count','mean','std','min','max']).reset_index()",
+    "description": "Summary statistics by group"
+  },
+  {
+    "id": "3",
+    "sas": "DATA adsl_adlb; MERGE adsl(IN=a) adlb(IN=b); BY USUBJID; IF a AND b; RUN;",
+    "python": "adsl_adlb = pd.merge(adsl, adlb, on='USUBJID', how='inner')",
+    "description": "Inner merge of two datasets"
+  },
+  {
+    "id": "4",
+    "sas": "PROC FREQ DATA=adae; TABLES TRTA*AEDECOD / CHISQ; WHERE TRTEMFL='Y'; RUN;",
+    "python": "adae_filtered = adae[adae['TRTEMFL']=='Y']\nfreq_table = pd.crosstab(adae_filtered['TRTA'], adae_filtered['AEDECOD'])",
+    "description": "Frequency table with filter"
+  },
+  {
+    "id": "5",
+    "sas": "DATA adlb_chg; SET adlb; BY USUBJID PARAMCD; IF FIRST.PARAMCD THEN base=AVAL; RETAIN base; CHG=AVAL-base; RUN;",
+    "python": "adlb['base'] = adlb.groupby(['USUBJID','PARAMCD'])['AVAL'].transform('first')\nadlb['CHG'] = adlb['AVAL'] - adlb['base']",
+    "description": "Calculate change from baseline"
+  },
+  {
+    "id": "6",
+    "sas": "DATA adlb_flag; SET adlb; IF AVAL > 100 THEN ANRHI='HIGH'; ELSE IF AVAL < 10 THEN ANRHI='LOW'; ELSE ANRHI='NORMAL'; RUN;",
+    "python": "adlb['ANRHI'] = np.where(adlb['AVAL']>100, 'HIGH', np.where(adlb['AVAL']<10, 'LOW', 'NORMAL'))",
+    "description": "Conditional flag derivation"
+  },
+  {
+    "id": "7",
+    "sas": "PROC TRANSPOSE DATA=adlb OUT=adlb_wide PREFIX=VISIT; BY USUBJID PARAMCD; VAR AVAL; ID VISITNUM; RUN;",
+    "python": "adlb_wide = adlb.pivot_table(index=['USUBJID','PARAMCD'], columns='VISITNUM', values='AVAL').reset_index()",
+    "description": "Transpose long to wide format"
+  },
+  {
+    "id": "8",
+    "sas": "DATA adlb_last; SET adlb; BY USUBJID PARAMCD; IF LAST.PARAMCD; RUN;",
+    "python": "adlb_last = adlb.groupby(['USUBJID','PARAMCD']).last().reset_index()",
+    "description": "Keep last observation per group"
+  }
+]
