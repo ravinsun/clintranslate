@@ -7,19 +7,19 @@ Built as a proof-of-concept for AI-assisted SAS→Python migration
 in pharmaceutical SDTM/ADaM pipelines.
 
 ---
-
 ## 🏗️ Architecture
 
+```text
 SAS Input
-↓
+    ↓
 HuggingFace Embeddings (all-MiniLM-L6-v2)
-↓
+    ↓
 ChromaDB Vector Store (cosine similarity)
-↓
+    ↓
 Claude API (RAG context + translation)
-↓
+    ↓
 Python Output + Translation Notes
-
+```
 ---
 
 ## 📦 Stack
