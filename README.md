@@ -112,7 +112,7 @@ clintranslate/
 
 **Ravinder Maramamula**
 Senior Data Engineer | Redbock / BioMarin
-[LinkedIn](https://linkedin.com/in/YOUR_PROFILE)
+[[LinkedIn](https://www.linkedin.com/in/ravindermaramamula/)
 
 ---
 
