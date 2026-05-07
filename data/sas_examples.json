@@ -1,0 +1,86 @@
+[
+  {
+    "id": "1",
+    "sas": "PROC SORT DATA=adlb OUT=adlb_sorted; BY USUBJID PARAMCD VISITNUM; RUN;",
+    "description": "PROC SORT sort ADaM lab dataset ADLB by subject identifier USUBJID parameter code PARAMCD visit number VISITNUM ascending order multiple BY variables clinical data ordering",
+    "domain": "ADaM",
+    "proc_type": "PROC SORT"
+  },
+  {
+    "id": "2",
+    "sas": "PROC MEANS DATA=adlb N MEAN STD MIN MAX; CLASS TRTA PARAMCD; VAR AVAL; OUTPUT OUT=sumstats MEAN=mean_val STD=std_val; RUN;",
+    "description": "PROC MEANS summary statistics N count MEAN average STD standard deviation MIN minimum MAX maximum CLASS treatment arm TRTA parameter code PARAMCD analysis value AVAL ADaM lab ADLB descriptive statistics OUTPUT dataset",
+    "domain": "ADaM",
+    "proc_type": "PROC MEANS"
+  },
+  {
+    "id": "3",
+    "sas": "DATA adsl_adlb; MERGE adsl(IN=a) adlb(IN=b); BY USUBJID; IF a AND b; RUN;",
+    "description": "DATA step MERGE inner join ADSL subject level dataset ADLB lab dataset BY subject identifier USUBJID IN= flag conditional subset both datasets matched records clinical data integration",
+    "domain": "ADaM",
+    "proc_type": "DATA step"
+  },
+  {
+    "id": "4",
+    "sas": "PROC FREQ DATA=adae; TABLES TRTA*AEDECOD / CHISQ; WHERE TRTEMFL='Y'; RUN;",
+    "description": "PROC FREQ frequency cross tabulation treatment arm TRTA adverse event decode AEDECOD chi-square CHISQ WHERE filter treatment emergent flag TRTEMFL adverse event ADAE safety analysis incidence",
+    "domain": "ADaM",
+    "proc_type": "PROC FREQ"
+  },
+  {
+    "id": "5",
+    "sas": "DATA adlb_chg; SET adlb; BY USUBJID PARAMCD; IF FIRST.PARAMCD THEN base=AVAL; RETAIN base; CHG=AVAL-base; RUN;",
+    "description": "DATA step change from baseline derivation FIRST. dot notation BY group processing RETAIN statement baseline value BASE analysis value AVAL CHG change score USUBJID PARAMCD ADaM derived variable lab data ADLB",
+    "domain": "ADaM",
+    "proc_type": "DATA step"
+  },
+  {
+    "id": "6",
+    "sas": "DATA adlb_flag; SET adlb; IF AVAL > 100 THEN ANRHI='HIGH'; ELSE IF AVAL < 10 THEN ANRHI='LOW'; ELSE ANRHI='NORMAL'; RUN;",
+    "description": "DATA step conditional flag derivation IF ELSE normal range high ANRHI low normal classification analysis value AVAL threshold comparison character variable assignment ADaM lab grading toxicity flag ADLB",
+    "domain": "ADaM",
+    "proc_type": "DATA step"
+  },
+  {
+    "id": "7",
+    "sas": "PROC TRANSPOSE DATA=adlb OUT=adlb_wide PREFIX=VISIT; BY USUBJID PARAMCD; VAR AVAL; ID VISITNUM; RUN;",
+    "description": "PROC TRANSPOSE reshape pivot long to wide format BY subject USUBJID parameter PARAMCD VAR analysis value AVAL ID visit number VISITNUM PREFIX column naming ADaM lab data restructure wide format visit columns",
+    "domain": "ADaM",
+    "proc_type": "PROC TRANSPOSE"
+  },
+  {
+    "id": "8",
+    "sas": "DATA adlb_last; SET adlb; BY USUBJID PARAMCD; IF LAST.PARAMCD; RUN;",
+    "description": "DATA step LAST. dot notation last observation per group BY subject identifier USUBJID parameter code PARAMCD last record endpoint last value carried forward LOCF ADaM lab dataset subset",
+    "domain": "ADaM",
+    "proc_type": "DATA step"
+  },
+  {
+    "id": "9",
+    "sas": "DATA adtte; SET adtte; BY USUBJID PARAMCD; IF CNSR=0 THEN EVNTDESC='Event'; ELSE EVNTDESC='Censored'; RUN;",
+    "description": "DATA step time to event ADTTE censoring flag CNSR event description EVNTDESC censored event indicator survival analysis endpoint derivation USUBJID PARAMCD ADaM time to event dataset",
+    "domain": "ADaM",
+    "proc_type": "DATA step"
+  },
+  {
+    "id": "10",
+    "sas": "PROC LIFETEST DATA=adtte PLOTS=SURVIVAL; TIME AVAL*CNSR(1); STRATA TRTA; RUN;",
+    "description": "PROC LIFETEST Kaplan Meier KM survival analysis TIME variable AVAL censoring CNSR STRATA treatment arm TRTA survival curve plot PLOTS overall survival progression free survival PFS OS clinical endpoint ADTTE",
+    "domain": "ADaM",
+    "proc_type": "PROC LIFETEST"
+  },
+  {
+    "id": "11",
+    "sas": "%MACRO derive_chg(ds=, var=); DATA &ds._chg; SET &ds.; BY USUBJID PARAMCD; IF FIRST.PARAMCD THEN base=&var.; RETAIN base; CHG=&var.-base; RUN; %MEND; %derive_chg(ds=adlb, var=AVAL);",
+    "description": "SAS macro %MACRO %MEND reusable parameterized change from baseline derivation macro parameter ds= dataset var= variable FIRST. RETAIN CHG baseline subtraction USUBJID PARAMCD ADaM derived variable automation",
+    "domain": "Macro",
+    "proc_type": "Macro"
+  },
+  {
+    "id": "12",
+    "sas": "PROC MIXED DATA=adlb; CLASS TRTA VISITNUM; MODEL AVAL=TRTA VISITNUM TRTA*VISITNUM BASE / DDFM=KR; REPEATED VISITNUM / SUBJECT=USUBJID TYPE=UN; LSMEANS TRTA*VISITNUM / DIFF; RUN;",
+    "description": "PROC MIXED mixed model repeated measures MMRM linear mixed model CLASS treatment TRTA visit VISITNUM MODEL analysis value AVAL covariate baseline BASE Kenward Roger DDFM=KR REPEATED within subject USUBJID unstructured covariance TYPE=UN LSMEANS least squares means treatment difference continuous endpoint primary analysis",
+    "domain": "Stats",
+    "proc_type": "PROC MIXED"
+  }
+]
