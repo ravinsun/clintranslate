@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from crewai import Crew, Process
-from langchain_anthropic import ChatAnthropic
+
 
 from crewai_pipeline.crew_agents import (
     make_dependency_planner_agent,
@@ -51,11 +51,7 @@ def run_crewai_pipeline(sas_folder: str) -> dict:
     print("="*60)
 
     # ── LLM setup ─────────────────────────────────────────────────────────────
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
-        max_tokens=2000,
-    )
+    llm = "anthropic/claude-sonnet-4-6"
 
     # ── Agents ────────────────────────────────────────────────────────────────
     print("\n📋 Assembling crew...")
