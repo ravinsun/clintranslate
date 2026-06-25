@@ -1,6 +1,6 @@
 # ClinTranslate v4 — Validation Report
 **File:** adlb_baseline.sas  
-**Generated:** 2026-06-25 14:08:19  
+**Generated:** 2026-06-25 14:47:54  
 **Tool:** ClinTranslate v4 Agentic Pipeline  
 **Disclaimer:** Translated output requires IQ/OQ/PQ validation before use in any GxP/submission context.
 
@@ -21,10 +21,10 @@
 | Metric | Value |
 |---|---|
 | SAS Lines of Code | 33 |
-| Python Lines of Code | 212 |
-| Agent Translation Time | 53.3s (0.9 min) |
+| Python Lines of Code | 200 |
+| Agent Translation Time | 43.1s (0.7 min) |
 | Manual Estimate (baseline) | 2.5 hrs |
-| Estimated Time Saved | 2.4852 hrs (99.4%) |
+| Estimated Time Saved | 2.488 hrs (99.5%) |
 
 ---
 
@@ -37,249 +37,224 @@
 ```python
 # Translated from: adlb_baseline.sas | ClinTranslate v4 Agentic
 # Study: BioMarin BMN-999 — ADLB Baseline Derivation
-# 21 CFR Part 11 Note: All transformations are explicit and auditable.
-#   No in-place modification of source data; outputs are new DataFrames.
+# Source SAS program: ADLB_BASELINE.sas
+# 21 CFR Part 11 Notice: All transformations are explicit and auditable.
+#   No silent imputation or overwrite occurs without conditional guard.
 
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# CONFIGURATION — mirror SAS libname paths
+# Library path configuration
+# Mirrors SAS: libname adam '/data/adam'; libname sdtm '/data/sdtm';
 # ---------------------------------------------------------------------------
-SDTM_PATH = "/data/sdtm"
-ADAM_PATH  = "/data/adam"
+SDTM_PATH = Path("/data/sdtm")
+ADAM_PATH = Path("/data/adam")
 
 # ---------------------------------------------------------------------------
-# LOAD SOURCE DATA
-# SAS: set lb_sorted (from proc sort data=sdtm.lb)
+# Load source SDTM LB dataset
+# Mirrors SAS: proc sort data=sdtm.lb out=lb_sorted; by usubjid lbtestcd lbdtc;
 # ---------------------------------------------------------------------------
-lb_raw = pd.read_sas(f"{SDTM_PATH}/lb.sas7bdat", encoding="utf-8")
+lb_sorted = pd.read_sas(SDTM_PATH / "lb.sas7bdat", encoding="utf-8")
 
-# ---------------------------------------------------------------------------
-# SORT — mirrors: proc sort data=sdtm.lb out=lb_sorted
-#                  by usubjid lbtestcd lbdtc;
-# SAS sort is stable; pandas sort_values is also stable by default.
-# ---------------------------------------------------------------------------
-lb_sorted = (
-    lb_raw
-    .sort_values(
-        by=["USUBJID", "LBTESTCD", "LBDTC"],
-        ascending=True,
-        na_position="last",       # SAS places missing values last in ascending sort
-        ignore_index=True
-    )
-    .copy()
+# Preserve all CDISC variable names exactly as loaded from source.
+# Sort ascending by USUBJID, LBTESTCD, LBDTC — mirrors SAS PROC SORT key order.
+lb_sorted = lb_sorted.sort_values(
+    by=["USUBJID", "LBTESTCD", "LBDTC"],
+    ascending=True,
+    na_position="last",        # NaN dates sort last, consistent with SAS behavior
+    ignore_index=True
 )
 
 # ---------------------------------------------------------------------------
-# BASELINE DERIVATION
-# SAS DATA step logic translated record-by-record via groupby + transform.
+# Baseline Derivation — mirrors SAS DATA step with RETAIN BASE .;
 #
-# Key SAS constructs mapped:
-#   RETAIN base .          -> pandas groupby carries forward derived values
-#   if first.lbtestcd      -> groupby boundary (first record per group resets)
-#   lbdtc <= rfstdtc       -> vectorised boolean comparison
-#   ablfl = 'Y'            -> conditional string assignment
-#   chg  = lbstresn - base -> vectorised subtraction, NaN-safe via np.where
-#   pchg = (chg/base)*100  -> vectorised division, NaN/zero-safe via np.where
+# SAS logic:
+#   retain base .;
+#   if first.lbtestcd then base = .;           <- reset at group boundary
+#   if lbdtc <= rfstdtc then base = lbstresn;  <- last qualifying value wins
+#   ablfl = 'Y' for each qualifying row
 #
-# IMPORTANT: The SAS logic retains the LAST value on or before rfstdtc as
-# the baseline (the retain + overwrite pattern within the by-group loop).
-# We replicate this by filtering to pre-dose records, then taking the LAST
-# non-missing lbstresn per (USUBJID, LBTESTCD) group.
+# Python strategy:
+#   Because SAS processes row-by-row with RETAIN and overwrites BASE on each
+#   qualifying row within the group, the effective baseline is the LAST
+#   LBSTRESN where LBDTC <= RFSTDTC within each (USUBJID, LBTESTCD) group.
+#   We derive this explicitly without mutation inside a loop to avoid silent
+#   row-order dependency errors (21 CFR Part 11 safe).
 # ---------------------------------------------------------------------------
 
-# --- Step 1: Ensure numeric types for analysis variables ---
-lb_sorted["LBSTRESN"] = pd.to_numeric(lb_sorted["LBSTRESN"], errors="coerce")
-
-# Coerce dates to a comparable type.
-# SAS date strings in ISO-8601 (LBDTC, RFSTDTC) are compared lexicographically,
-# which is safe for yyyy-mm-dd strings; we replicate that here.
-# Cast to string to guarantee consistent comparison (matches SAS lbdtc <= rfstdtc).
-lb_sorted["LBDTC"]   = lb_sorted["LBDTC"].astype(str).str.strip()
-lb_sorted["RFSTDTC"] = lb_sorted["RFSTDTC"].astype(str).str.strip()
-
-# --- Step 2: Identify pre-dose / on-dose-day records (lbdtc <= rfstdtc) ---
-# Guard against missing date strings ('', 'nan', 'NaT') before comparison.
-valid_date_mask = (
+# Step 1: Identify rows on or before first dose (LBDTC <= RFSTDTC).
+# Both columns are string ISO-8601 dates from SDTM; compare lexicographically.
+# If your environment stores these as Python datetime objects, the same
+# comparison operator applies without modification.
+lb_sorted["_pre_dose_flag"] = (
     lb_sorted["LBDTC"].notna()
     & lb_sorted["RFSTDTC"].notna()
-    & (lb_sorted["LBDTC"] != "")
-    & (lb_sorted["RFSTDTC"] != "")
-    & (lb_sorted["LBDTC"] != "nan")
-    & (lb_sorted["RFSTDTC"] != "nan")
+    & (lb_sorted["LBDTC"] <= lb_sorted["RFSTDTC"])
 )
 
-pre_dose_mask = valid_date_mask & (lb_sorted["LBDTC"] <= lb_sorted["RFSTDTC"])
+# Step 2: Mark ABLFL = 'Y' for every qualifying pre-dose row.
+# SAS sets ablfl = 'Y' on all rows where lbdtc <= rfstdtc within the group.
+lb_sorted["ABLFL"] = np.where(lb_sorted["_pre_dose_flag"], "Y", np.nan)
 
-# --- Step 3: Derive ABLFL — mark pre-dose records initially as candidate ---
-# SAS sets ablfl='Y' for every pre-dose record inside the by-group loop.
-# The final baseline value is the last such record (due to RETAIN overwrite).
-# We replicate: mark all pre-dose rows, then identify the last non-missing
-# LBSTRESN per group to compute BASE.
-lb_sorted["ABLFL"] = np.where(pre_dose_mask, "Y", np.nan)
+# Step 3: Derive BASE as the LAST non-missing LBSTRESN on or before first dose,
+# per (USUBJID, LBTESTCD) group.
+# SAS RETAIN overwrites on each qualifying row in sort order, so the last
+# qualifying row's value persists as the baseline for the whole group.
+_baseline_candidates = lb_sorted.loc[
+    lb_sorted["_pre_dose_flag"] & lb_sorted["LBSTRESN"].notna()
+].copy()
 
-# --- Step 4: Derive BASE ---
-# For each (USUBJID, LBTESTCD), BASE = last non-missing LBSTRESN where LBDTC <= RFSTDTC.
-# This mirrors the SAS RETAIN pattern where base is overwritten on each qualifying row.
-
-# Build a helper Series: LBSTRESN value where pre-dose, else NaN
-lbstresn_predose = lb_sorted["LBSTRESN"].where(pre_dose_mask, other=np.nan)
-
-# last() on the sorted group gives the last non-missing equivalent —
-# we use a custom lambda to take the last non-NaN value.
-def last_nonmissing(s):
-    """Return the last non-NaN value in a Series; NaN if all missing."""
-    valid = s.dropna()
-    return valid.iloc[-1] if not valid.empty else np.nan
-
-base_lookup = (
-    lb_sorted
-    .assign(_predose_lbstresn=lbstresn_predose)
-    .groupby(["USUBJID", "LBTESTCD"], sort=False)["_predose_lbstresn"]
-    .transform(last_nonmissing)
+_baseline_per_group = (
+    _baseline_candidates
+    .groupby(["USUBJID", "LBTESTCD"], sort=False)["LBSTRESN"]
+    .last()                   # last() mirrors SAS RETAIN final-value-wins logic
+    .reset_index()
+    .rename(columns={"LBSTRESN": "BASE"})
 )
 
-lb_sorted["BASE"] = base_lookup
-
-# --- Step 5: Derive CHG = LBSTRESN - BASE ---
-# SAS: if base ne . and lbstresn ne . then chg = lbstresn - base; else chg = .;
-# np.where preserves NaN semantics explicitly (no silent imputation).
-both_present_mask = lb_sorted["BASE"].notna() & lb_sorted["LBSTRESN"].notna()
-
-lb_sorted["CHG"] = np.where(
-    both_present_mask,
-    lb_sorted["LBSTRESN"] - lb_sorted["BASE"],
-    np.nan               # explicit NaN — mirrors SAS missing (.)
-)
-
-# --- Step 6: Derive PCHG = (CHG / BASE) * 100 ---
-# SAS: if base ne 0 and base ne . then pchg = (chg / base) * 100; else pchg = .;
-# Guard: BASE must be non-missing AND non-zero to avoid divide-by-zero.
-pchg_eligible_mask = lb_sorted["BASE"].notna() & (lb_sorted["BASE"] != 0)
-
-lb_sorted["PCHG"] = np.where(
-    pchg_eligible_mask,
-    (lb_sorted["CHG"] / lb_sorted["BASE"]) * 100,
-    np.nan               # explicit NaN — mirrors SAS missing (.)
+# Step 4: Merge BASE back onto all rows for the subject-parameter group.
+# Mirrors SAS RETAIN broadcasting the retained value across all rows in group.
+adlb = lb_sorted.merge(
+    _baseline_per_group,
+    on=["USUBJID", "LBTESTCD"],
+    how="left"                # subjects with no pre-dose values get BASE = NaN
 )
 
 # ---------------------------------------------------------------------------
-# APPLY VARIABLE LABELS (stored as column-level metadata via attrs)
-# SAS LABEL statement — no native pandas equivalent; attrs dict used per
-# pandas convention for GxP traceability.
+# Change from Baseline (CHG)
+# Mirrors SAS: if base ne . and lbstresn ne . then chg = lbstresn - base;
+#              else chg = .;
+# np.nan propagates naturally in arithmetic, so explicit guard is still
+# applied to match SAS conditional intent precisely.
 # ---------------------------------------------------------------------------
-variable_labels = {
+adlb["CHG"] = np.where(
+    adlb["BASE"].notna() & adlb["LBSTRESN"].notna(),
+    adlb["LBSTRESN"] - adlb["BASE"],
+    np.nan                    # explicit NaN, not 0 — no silent data modification
+)
+
+# ---------------------------------------------------------------------------
+# Percent Change from Baseline (PCHG)
+# Mirrors SAS: if base ne 0 and base ne . then pchg = (chg / base) * 100;
+#              else pchg = .;
+# Guard against division by zero explicitly, consistent with SAS condition.
+# ---------------------------------------------------------------------------
+adlb["PCHG"] = np.where(
+    adlb["BASE"].notna() & (adlb["BASE"] != 0),
+    (adlb["CHG"] / adlb["BASE"]) * 100,
+    np.nan
+)
+
+# ---------------------------------------------------------------------------
+# Variable labels — stored as column-level metadata in the DataFrame attrs
+# dict for downstream documentation and dataset export.
+# Mirrors SAS LABEL statement inside DATA step.
+# ---------------------------------------------------------------------------
+_variable_labels = {
     "BASE":  "Baseline Value",
     "CHG":   "Change from Baseline",
     "PCHG":  "Percent Change from Baseline",
     "ABLFL": "Baseline Record Flag",
 }
-for var, label in variable_labels.items():
-    lb_sorted[var].attrs["label"] = label
+adlb.attrs["variable_labels"] = _variable_labels
 
 # ---------------------------------------------------------------------------
-# FINALISE ADLB DATASET
-# Preserve original column order; append derived variables at the end.
+# Drop internal working column — not part of ADaM spec output.
 # ---------------------------------------------------------------------------
-adlb = lb_sorted.copy()
+adlb = adlb.drop(columns=["_pre_dose_flag"])
 
 # ---------------------------------------------------------------------------
-# WRITE OUTPUT — mirrors: data adam.adlb;
-# Using parquet for GxP-safe lossless storage; retain SAS7BDAT path if needed.
+# Final sort to mirror SAS dataset output order.
+# Mirrors SAS: by usubjid lbtestcd lbdtc (carried through from PROC SORT)
 # ---------------------------------------------------------------------------
-adlb.to_parquet(f"{ADAM_PATH}/adlb.parquet", index=False, engine="pyarrow")
-
-# Optional SAS7BDAT output (requires pyreadstat):
-# import pyreadstat
-# pyreadstat.write_sas7bdat(adlb, f"{ADAM_PATH}/adlb.sas7bdat",
-#                           column_labels=variable_labels)
+adlb = adlb.sort_values(
+    by=["USUBJID", "LBTESTCD", "LBDTC"],
+    ascending=True,
+    na_position="last",
+    ignore_index=True
+)
 
 # ---------------------------------------------------------------------------
-# SUMMARY STATISTICS
-# Mirrors: proc means data=adam.adlb n mean std min max;
-#           class lbtestcd;
-#           var lbstresn chg pchg;
-#           output out=adlb_summ mean=mean_val std=std_val;
+# Write ADLB output dataset
+# Mirrors SAS: data adam.adlb; ... run;
+# Using pyreadstat to write .sas7bdat with variable labels if available.
+# ---------------------------------------------------------------------------
+try:
+    import pyreadstat
+    pyreadstat.write_sas7bdat(
+        adlb,
+        str(ADAM_PATH / "adlb.sas7bdat"),
+        column_labels=[
+            _variable_labels.get(col, col) for col in adlb.columns
+        ]
+    )
+except ImportError:
+    # Fallback: write to CSV with audit trail note — do not silently skip
+    adlb.to_csv(ADAM_PATH / "adlb.csv", index=False)
+    import warnings
+    warnings.warn(
+        "pyreadstat not available — ADLB written to CSV. "
+        "Replace with SAS7BDAT output before GxP submission.",
+        UserWarning,
+        stacklevel=2
+    )
+
+# ---------------------------------------------------------------------------
+# Summary Statistics
+# Mirrors SAS: proc means data=adam.adlb n mean std min max;
+#              class lbtestcd;
+#              var lbstresn chg pchg;
+#              output out=adlb_summ mean=mean_val std=std_val;
 #
-# Note: SAS PROC MEANS uses N (non-missing count); pandas describe() does too.
-# SAS default STD uses N-1 denominator (ddof=1) — matched explicitly below.
+# [REQUIRES_MANUAL_REVIEW: TFL output]
+# The PROC MEANS output dataset (adlb_summ) is replicated here as a
+# pandas groupby aggregation. If this feeds an ODS RTF/PDF table, the
+# formatting layer must be rebuilt separately using a TFL tool
+# (e.g., Tplyr, pharmaRTF, or an internal SAS macro equivalent).
 # ---------------------------------------------------------------------------
-summary_vars = ["LBSTRESN", "CHG", "PCHG"]
+_summary_vars = ["LBSTRESN", "CHG", "PCHG"]
 
 adlb_summ = (
     adlb
-    .groupby("LBTESTCD", dropna=False)[summary_vars]
+    .groupby("LBTESTCD", sort=True, dropna=False)[_summary_vars]
     .agg(
-        n=("LBSTRESN", "count"),                  # non-missing count per SAS N
-        mean_val=("LBSTRESN", "mean"),
-        std_val=("LBSTRESN", lambda x: x.std(ddof=1)),   # SAS STD = sample std
+        n=("LBSTRESN", "count"),        # SAS N statistic — non-missing count only
+        mean_val=("LBSTRESN", "mean"),  # mirrors output mean=mean_val
+        std_val=("LBSTRESN", "std"),    # mirrors output std=std_val
         min_val=("LBSTRESN", "min"),
         max_val=("LBSTRESN", "max"),
     )
     .reset_index()
 )
 
-# Compute CHG and PCHG summary columns and merge (mirrors multi-var PROC MEANS)
-for var in ["CHG", "PCHG"]:
-    var_summ = (
+# Compute mean/std for CHG and PCHG as separate columns to fully mirror
+# PROC MEANS multi-variable output across CLASS levels.
+for _var in ["CHG", "PCHG"]:
+    _agg = (
         adlb
-        .groupby("LBTESTCD", dropna=False)[var]
+        .groupby("LBTESTCD", sort=True, dropna=False)[_var]
         .agg(
-            **{
-                f"n_{var.lower()}":       ("count"),
-                f"mean_{var.lower()}":    ("mean"),
-                f"std_{var.lower()}":     (lambda x: x.std(ddof=1)),
-                f"min_{var.lower()}":     ("min"),
-                f"max_{var.lower()}":     ("max"),
-            }
+            n="count",
+            mean_val="mean",
+            std_val="std",
+            min_val="min",
+            max_val="max",
         )
         .reset_index()
+        .rename(columns={
+            "n":        f"n_{_var}",
+            "mean_val": f"mean_{_var}",
+            "std_val":  f"std_{_var}",
+            "min_val":  f"min_{_var}",
+            "max_val":  f"max_{_var}",
+        })
     )
-    adlb_summ = adlb_summ.merge(var_summ, on="LBTESTCD", how="left")
+    adlb_summ = adlb_summ.merge(_agg, on="LBTESTCD", how="left")
 
-# Write summary dataset — mirrors: output out=adlb_summ
-adlb_summ.to_parquet(f"{ADAM_PATH}/adlb_summ.parquet", index=False, engine="pyarrow")
-
-# ---------------------------------------------------------------------------
-# VALIDATION ASSERTIONS — 21 CFR Part 11 data integrity checks
-# These replace silent SAS macro-level assumptions with explicit guards.
-# ---------------------------------------------------------------------------
-
-# 1. USUBJID must never be null in the output dataset
-assert adlb["USUBJID"].notna().all(), (
-    "FATAL: USUBJID contains missing values — output dataset is non-compliant."
-)
-
-# 2. CHG must equal LBSTRESN - BASE wherever both are non-missing
-chg_check = adlb.loc[both_present_mask, ["LBSTRESN", "BASE", "CHG"]].copy()
-chg_discrepancy = ~np.isclose(
-    chg_check["CHG"],
-    chg_check["LBSTRESN"] - chg_check["BASE"],
-    equal_nan=True
-)
-assert not chg_discrepancy.any(), (
-    "FATAL: CHG derivation mismatch detected — review LBSTRESN/BASE values."
-)
-
-# 3. PCHG must be missing when BASE is zero or missing (no divide-by-zero)
-pchg_invalid = adlb.loc[~pchg_eligible_mask, "PCHG"].notna()
-assert not pchg_invalid.any(), (
-    "FATAL: PCHG is non-missing where BASE is zero or missing — "
-    "potential divide-by-zero violation."
-)
-
-# 4. Row count must not change from source to output (no silent drops/duplication)
-assert len(adlb) == len(lb_raw), (
-    f"FATAL: Row count mismatch — source={len(lb_raw)}, output={len(adlb)}. "
-    "Investigate merge or filter logic."
-)
-
-# [REQUIRES_MANUAL_REVIEW: TFL output]
-# The original SAS program does not contain PROC REPORT / ODS RTF blocks.
-# If summary tables (adlb_summ) are to be rendered as RTF/PDF for submission,
-# implement using a validated TFL generation framework (e.g., pharmaRTF,
-# Tplyr, or an internal validated Python reporting utility).
+# Write summary output — mirrors SAS: output out=adlb_summ
+adlb_summ.to_csv(ADAM_PATH / "adlb_summ.csv", index=False)
 ```
 
 ---
