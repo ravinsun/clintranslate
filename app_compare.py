@@ -1,19 +1,18 @@
 """
-ClinTranslate — Framework Comparison Streamlit UI
-Run: streamlit run app_compare.py
+app_compare.py  —  ClinTranslate Framework Comparison Dashboard
+Reads results/lg_result.json and results/ca_result.json
+and displays a side-by-side visual comparison.
+
+Run after both pipelines complete:
+    streamlit run app_compare.py
 """
 
 import os
-import sys
-import time
-import tempfile
+import json
 from pathlib import Path
 from datetime import datetime
 
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
 
 st.set_page_config(
     page_title="ClinTranslate — Framework Comparison",
@@ -21,256 +20,199 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── Header ────────────────────────────────────────────────────────────────────
-st.title("🧬 ClinTranslate — LangGraph vs CrewAI")
-st.caption("Same 5-agent clinical SAS→Python pipeline. Two agentic frameworks. Side-by-side comparison.")
+def load_result(path):
+    if os.path.isfile(path):
+        with open(path) as f:
+            return json.load(f)
+    return None
 
-col_lg, col_ca = st.columns(2)
-with col_lg:
-    st.markdown("### 🔷 LangGraph")
-    st.caption("StateGraph · Deterministic · GxP-auditable · Explicit edges")
-with col_ca:
-    st.markdown("### 🤖 CrewAI")
-    st.caption("Agent Crew · Role-based · Collaborative · LLM-interpreted")
+def routing_badge(decision):
+    return {"AUTO_APPROVED": "🟢", "REVIEW_REQUIRED": "🟡", "REJECTED": "🔴"}.get(decision, "⚪")
+
+st.title("🧬 ClinTranslate — Framework Comparison")
+st.caption("LangGraph (StateGraph) vs CrewAI (Agent Crew) — same 5 agents, same clinical SAS→Python task")
+
+lg = load_result("results/lg_result.json")
+ca = load_result("results/ca_result.json")
+
+if not lg and not ca:
+    st.warning("No results found yet. Run both pipelines first:")
+    st.code("""# Step 1 — LangGraph (venv311)
+source venv311/bin/activate
+python3 run_langgraph.py ./data/sample_sas
+
+# Step 2 — CrewAI (venv311_crew)
+source venv311_crew/bin/activate
+PYTHONPATH=. python3 run_crewai.py ./data/sample_sas
+
+# Step 3 — View comparison
+source venv311/bin/activate
+streamlit run app_compare.py""")
+    st.stop()
+
+# Run info
+col1, col2 = st.columns(2)
+if lg:
+    col1.info(f"🔷 LangGraph: {lg.get('run_timestamp','—')} | {lg.get('elapsed_sec')}s | {lg.get('file_count')} files")
+if ca:
+    col2.info(f"🤖 CrewAI: {ca.get('run_timestamp','—')} | {ca.get('elapsed_sec')}s | {ca.get('file_count')} files")
 
 st.divider()
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("⚙️ Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key", value=os.getenv("ANTHROPIC_API_KEY", ""), type="password"
-    )
-    if api_key:
-        os.environ["ANTHROPIC_API_KEY"] = api_key
+# Top metrics
+st.subheader("📊 Head-to-Head")
 
-    st.divider()
-    framework_choice = st.radio(
-        "Run which framework?",
-        ["Both (comparison)", "LangGraph only", "CrewAI only"],
-        index=0,
-    )
+m = st.columns(6)
+lg_ppf = round(lg["elapsed_sec"]/lg["file_count"],1) if lg and lg.get("file_count") else "—"
+ca_ppf = round(ca["elapsed_sec"]/ca["file_count"],1) if ca and ca.get("file_count") else "—"
 
-    st.divider()
-    st.markdown("**Why LangGraph for GxP?**")
-    st.markdown("- Deterministic execution order")
-    st.markdown("- Bounded self-correction (max 2 retries)")
-    st.markdown("- Per-node timing → auditable")
-    st.markdown("- Conditional edges in code, not LLM")
+rows = [
+    ("Files",          lg["file_count"] if lg else "—",           ca["file_count"] if ca else "—"),
+    ("Total (s)",      lg["elapsed_sec"] if lg else "—",           ca["elapsed_sec"] if ca else "—"),
+    ("Per file (s)",   lg_ppf,                                     ca_ppf),
+    ("Avg cosine",     lg["stats"]["avg_cosine"] if lg else "—",   ca["stats"]["avg_cosine"] if ca else "—"),
+    ("Syntax valid",   f"{lg['stats']['syntax_valid']}/{lg['file_count']}" if lg else "—",
+                       f"{ca['stats']['syntax_valid']}/{ca['file_count']}" if ca else "—"),
+    ("TFL flagged",    lg["stats"]["tfl_flagged"] if lg else "—",  ca["stats"]["tfl_flagged"] if ca else "—"),
+]
+for i,(label,lv,cv) in enumerate(rows):
+    with m[i]:
+        st.metric(label, lv)
+        st.caption(f"🤖 {cv}")
 
-    st.markdown("**Why CrewAI for exploration?**")
-    st.markdown("- Agents collaborate autonomously")
-    st.markdown("- Role + backstory = richer context")
-    st.markdown("- Less boilerplate for open-ended tasks")
-    st.markdown("- Better for non-regulated workflows")
+st.divider()
 
-# ── File upload ───────────────────────────────────────────────────────────────
-st.subheader("📁 Upload SAS Files")
-uploaded_files = st.file_uploader(
-    "Upload .sas files to translate",
-    type=["sas"],
-    accept_multiple_files=True,
-)
+# Side by side
+left, right = st.columns(2)
 
-run_btn = st.button(
-    "🚀 Run Pipeline(s)",
-    disabled=not uploaded_files or not api_key,
-    type="primary",
-)
+with left:
+    st.markdown("### 🔷 LangGraph")
+    if not lg:
+        st.warning("Run `python3 run_langgraph.py ./data/sample_sas` first")
+    else:
+        s = lg["stats"]
+        r1,r2,r3 = st.columns(3)
+        r1.metric("🟢 Auto", s["auto_approved"])
+        r2.metric("🟡 Review", s["review_required"])
+        r3.metric("🔴 Rejected", s["rejected"])
 
-# ── Runner ────────────────────────────────────────────────────────────────────
-if run_btn and uploaded_files:
+        if lg.get("node_timings"):
+            st.markdown("**Node timings**")
+            for node, t in lg["node_timings"].items():
+                pct = min(int((t / lg["elapsed_sec"]) * 100), 100) if lg["elapsed_sec"] else 0
+                st.progress(pct/100, text=f"{node}: {t}s")
 
-    tmp_dir = tempfile.mkdtemp()
-    for uf in uploaded_files:
-        with open(os.path.join(tmp_dir, uf.name), "wb") as f:
-            f.write(uf.read())
+        st.markdown("**Per-file results**")
+        for t in lg["translations"]:
+            badge = routing_badge(t["routing_decision"])
+            tfl = " ⚠️TFL" if t["tfl_flagged"] else ""
+            with st.expander(f"{badge} {t['filename']}{tfl}"):
+                c1,c2,c3,c4 = st.columns(4)
+                c1.metric("Score", t["cosine_score"])
+                c2.metric("Syntax", t["validation_status"].upper()[:7])
+                c3.metric("SAS LOC", t["sas_loc"])
+                c4.metric("Py LOC", t["py_loc"])
+                st.caption(f"⏱ {t['translation_time']}s | {t['routing_decision']}")
+                if t.get("routing_reason"):
+                    st.caption(f"📝 {t['routing_reason']}")
+                if t.get("python_code"):
+                    code = t["python_code"]
+                    st.code(code[:1500] + ("..." if len(code)>1500 else ""), language="python")
 
-    st.info(f"📂 {len(uploaded_files)} file(s) ready — launching pipeline(s)...")
+        st.info("✅ **Stateful** — typed dict, real ChromaDB, real ast.parse()")
 
-    run_lg = framework_choice in ("Both (comparison)", "LangGraph only")
-    run_ca = framework_choice in ("Both (comparison)", "CrewAI only")
+with right:
+    st.markdown("### 🤖 CrewAI")
+    if not ca:
+        st.warning("Run `PYTHONPATH=. python3 run_crewai.py ./data/sample_sas` first")
+    else:
+        s = ca["stats"]
+        r1,r2,r3 = st.columns(3)
+        r1.metric("🟢 Auto", s["auto_approved"])
+        r2.metric("🟡 Review", s["review_required"])
+        r3.metric("🔴 Rejected", s["rejected"])
 
-    lg_result = {}
-    ca_result = {}
+        st.markdown("**Agent roles**")
+        roles = [
+            ("SAS Dependency Analyst",            "Scans %INCLUDE, builds execution order"),
+            ("Clinical SAS-to-Python Translator",  "RAG + Claude translation"),
+            ("Python Code Quality Validator",       "Syntax check + self-correction"),
+            ("Translation Confidence Assessor",     "Routes by cosine score"),
+            ("Validation Report Author",            "GxP reports + reviewer checklists"),
+        ]
+        for role, desc in roles:
+            st.caption(f"**{role}** — {desc}")
 
-    # ── LangGraph run ─────────────────────────────────────────────────────────
-    if run_lg:
-        with st.expander("🔷 LangGraph — Live Agent Progress", expanded=True):
-            st.markdown("**Running 5-agent StateGraph...**")
+        if ca["translations"]:
+            st.markdown("**Parsed results**")
+            for t in ca["translations"]:
+                badge = routing_badge(t["routing_decision"])
+                with st.expander(f"{badge} {t['filename']}"):
+                    c1,c2 = st.columns(2)
+                    c1.metric("Score", t["cosine_score"] or "LLM-est.")
+                    c2.metric("Decision", t["routing_decision"])
+        else:
+            st.markdown("**CrewAI narrative output**")
+            raw = ca.get("raw_output","")
+            st.markdown(raw[:3000] + ("..." if len(raw)>3000 else ""))
 
-            agent_names = [
-                ("1️⃣", "Dependency Planner",  "planner_notes"),
-                ("2️⃣", "RAG Translator",       "translator_notes"),
-                ("3️⃣", "Syntax Validator",     "validator_notes"),
-                ("4️⃣", "Confidence Scorer",    "scorer_notes"),
-                ("5️⃣", "Report Generator",     "report_paths"),
-            ]
+        st.warning("⚠️ **Context-passing** — text between agents, scores LLM-estimated")
 
-            from agents.dependency_planner import run_dependency_planner
-            from agents.rag_translator import run_rag_translator
-            from agents.syntax_validator import run_syntax_validator
-            from agents.confidence_scorer import run_confidence_scorer
-            from agents.report_generator import run_report_generator
+# Architecture code
+st.divider()
+st.subheader("🏗️ Key Code Difference")
 
-            agent_fns = [
-                run_dependency_planner,
-                run_rag_translator,
-                run_syntax_validator,
-                run_confidence_scorer,
-                run_report_generator,
-            ]
-
-            state = {
-                "sas_folder": tmp_dir, "sas_files": [], "dependency_graph": {},
-                "execution_order": [], "planner_notes": [], "translations": {},
-                "translator_notes": [], "validator_notes": [], "routing_summary": {},
-                "scorer_notes": [], "report_paths": [],
-            }
-
-            lg_total_start = time.time()
-            node_timings = {}
-            pb = st.progress(0)
-
-            for i, (fn, (icon, label, notes_key)) in enumerate(zip(agent_fns, agent_names)):
-                if i > 0 and not state.get("sas_files"):
-                    st.warning("⚠️ No SAS files — pipeline stopped")
-                    break
-
-                status_placeholder = st.empty()
-                status_placeholder.markdown(f"{icon} **{label}** — 🔄 Running...")
-                t0 = time.time()
-                state = fn(state)
-                elapsed = round(time.time() - t0, 2)
-                node_timings[label] = elapsed
-
-                notes = state.get(notes_key, [])
-                note_lines = "\n".join(f"  → {n}" for n in (notes[:2] if isinstance(notes, list) and notes and isinstance(notes[0], str) else []))
-                status_placeholder.markdown(f"{icon} **{label}** — ✅ {elapsed}s\n{note_lines}")
-                pb.progress((i + 1) / len(agent_fns))
-
-            lg_elapsed = round(time.time() - lg_total_start, 1)
-            st.success(f"✅ LangGraph complete — {lg_elapsed}s total")
-
-            lg_result = {
-                "framework": "LangGraph",
-                "elapsed_sec": lg_elapsed,
-                "node_timings": node_timings,
-                "routing_summary": state.get("routing_summary", {}),
-                "translations": state.get("translations", {}),
-                "report_paths": state.get("report_paths", []),
-            }
-
-    # ── CrewAI run ────────────────────────────────────────────────────────────
-    if run_ca:
-        with st.expander("🤖 CrewAI — Agent Crew", expanded=True):
-            st.markdown("**Assembling 5-agent crew...**")
-            ca_progress = st.empty()
-            ca_progress.info("🤖 CrewAI crew running — agents collaborating via role+goal+backstory...")
-
-            ca_start = time.time()
-            try:
-                from crewai_pipeline.pipeline_crewai import run_crewai_pipeline
-                ca_result = run_crewai_pipeline(tmp_dir)
-                ca_elapsed = round(time.time() - ca_start, 1)
-                ca_progress.success(f"✅ CrewAI complete — {ca_elapsed}s total")
-                st.markdown("**CrewAI Output:**")
-                st.markdown(ca_result.get("raw_output", "")[:3000] + "...")
-            except ImportError:
-                ca_progress.error("⚠️ CrewAI not installed: `pip install crewai langchain-anthropic`")
-                ca_result = {"framework": "CrewAI", "elapsed_sec": 0, "error": "not installed"}
-            except Exception as e:
-                ca_progress.error(f"❌ CrewAI error: {e}")
-                ca_result = {"framework": "CrewAI", "elapsed_sec": 0, "error": str(e)}
-
-    # ── Side-by-side results ──────────────────────────────────────────────────
-    st.divider()
-    st.subheader("📊 Side-by-Side Comparison")
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("### 🔷 LangGraph Results")
-        if lg_result:
-            st.metric("Total Runtime", f"{lg_result.get('elapsed_sec', 0)}s")
-
-            timings = lg_result.get("node_timings", {})
-            if timings:
-                st.markdown("**Per-Node Timing:**")
-                for node, t in timings.items():
-                    st.caption(f"  {node}: {t}s")
-
-            routing = lg_result.get("routing_summary", {})
-            if routing:
-                st.markdown("**Routing Decisions:**")
-                for fname, decision in routing.items():
-                    badge = {"AUTO_APPROVED": "🟢", "REVIEW_REQUIRED": "🟡", "REJECTED": "🔴"}.get(decision, "⚪")
-                    st.caption(f"  {badge} {fname} → {decision}")
-
-            translations = lg_result.get("translations", {})
-            if translations:
-                for fname, data in translations.items():
-                    with st.expander(f"📄 {fname} — translated Python"):
-                        st.code(data.get("python_code", ""), language="python")
-
-    with c2:
-        st.markdown("### 🤖 CrewAI Results")
-        if ca_result:
-            st.metric("Total Runtime", f"{ca_result.get('elapsed_sec', 0)}s")
-            if ca_result.get("error"):
-                st.error(f"Error: {ca_result['error']}")
-            elif ca_result.get("raw_output"):
-                st.markdown(ca_result["raw_output"][:2000])
-
-    # ── Architecture callout ──────────────────────────────────────────────────
-    st.divider()
-    st.subheader("🏗️ Architecture Difference")
-
-    c3, c4 = st.columns(2)
-    with c3:
-        st.markdown("**LangGraph — Explicit State Machine**")
-        st.code("""graph = StateGraph(PipelineState)
-graph.add_node("plan",      run_planner)
-graph.add_node("translate", run_translator)
+a1,a2 = st.columns(2)
+with a1:
+    st.markdown("**LangGraph — explicit edges**")
+    st.code("""graph.add_edge("translate", "validate")
 graph.add_conditional_edges(
     "plan",
     lambda s: "translate" if s["sas_files"] else "end"
 )
-graph.add_edge("translate", "validate")
-# You control every transition""", language="python")
+# You define every transition in code""", language="python")
 
-    with c4:
-        st.markdown("**CrewAI — Role-Based Agent Crew**")
-        st.code("""planner = Agent(
-    role="SAS Dependency Analyst",
-    goal="Resolve %INCLUDE dependencies...",
-    backstory="20-year SAS architect in pharma...",
+with a2:
+    st.markdown("**CrewAI — context chain**")
+    st.code("""t3 = Task(
+    description="Validate syntax...",
+    context=[t2],  # prior task output as text
+    agent=validator_agent,
 )
-crew = Crew(
-    agents=[planner, translator, ...],
-    tasks=[t1, t2, ...],
-    process=Process.sequential,
-)
-# CrewAI manages context passing""", language="python")
+# LLM interprets the context""", language="python")
 
-    # ── Download reports ──────────────────────────────────────────────────────
-    st.divider()
-    st.subheader("📥 Download Reports")
-    for rpath in lg_result.get("report_paths", []):
-        if os.path.isfile(rpath):
-            with open(rpath, "rb") as f:
-                st.download_button(
-                    f"⬇️ [LangGraph] {Path(rpath).name}",
-                    data=f.read(),
-                    file_name=Path(rpath).name,
-                    mime="text/plain",
-                )
-    ca_report = ca_result.get("report_path", "")
-    if ca_report and os.path.isfile(ca_report):
-        with open(ca_report, "rb") as f:
-            st.download_button(
-                f"⬇️ [CrewAI] {Path(ca_report).name}",
-                data=f.read(),
-                file_name=Path(ca_report).name,
-                mime="text/markdown",
-            )
+# Comparison table
+st.divider()
+st.subheader("🔑 Framework Decision Guide")
+
+import pandas as pd
+df = pd.DataFrame({
+    "Dimension":    ["State","Scores","Validation","GxP fit","Speed/file","Best for"],
+    "🔷 LangGraph": ["Typed Python dict","Real ChromaDB","Real ast.parse()","✅ Excellent","55s","Regulated pipelines"],
+    "🤖 CrewAI":    ["Text context","LLM-estimated","LLM-described","⚠️ Limited","89s","Open-ended tasks"],
+})
+st.dataframe(df, use_container_width=True, hide_index=True)
+
+# Downloads
+st.divider()
+st.subheader("📥 Download")
+d1,d2 = st.columns(2)
+with d1:
+    if lg:
+        st.download_button("⬇️ LangGraph JSON", json.dumps(lg,indent=2),
+                           "lg_result.json","application/json")
+        for rpath in lg.get("report_paths",[]):
+            if os.path.isfile(rpath):
+                with open(rpath,"rb") as f:
+                    st.download_button(f"⬇️ {Path(rpath).name}",
+                                       f.read(), Path(rpath).name, "text/plain")
+with d2:
+    if ca:
+        safe = {k:v for k,v in ca.items() if k!="raw_output"}
+        st.download_button("⬇️ CrewAI JSON", json.dumps(safe,indent=2),
+                           "ca_result.json","application/json")
+        rp = ca.get("report_path","")
+        if rp and os.path.isfile(rp):
+            with open(rp,"rb") as f:
+                st.download_button(f"⬇️ {Path(rp).name}",
+                                   f.read(), Path(rp).name,"text/markdown")

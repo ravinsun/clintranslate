@@ -1,0 +1,54 @@
+{
+  "framework": "CrewAI",
+  "process": "Sequential (role-based agents)",
+  "run_timestamp": "2026-06-25 16:08:50",
+  "sas_folder": "./data/sample_sas",
+  "elapsed_sec": 269.2,
+  "node_timings": {},
+  "file_count": 2,
+  "routing_summary": {
+    "macros/utils.sas": "AUTO_APPROVED",
+    "macros/formats.sas": "AUTO_APPROVED"
+  },
+  "translations": [
+    {
+      "filename": "macros/utils.sas",
+      "cosine_score": 0.87,
+      "sas_loc": 52,
+      "py_loc": 89,
+      "translation_time": 3.21,
+      "validation_status": "valid",
+      "correction_attempts": 0,
+      "routing_decision": "AUTO_APPROVED",
+      "routing_reason": "Parsed from CrewAI report",
+      "python_code": "",
+      "tfl_flagged": false
+    },
+    {
+      "filename": "macros/formats.sas",
+      "cosine_score": 0.82,
+      "sas_loc": 68,
+      "py_loc": 112,
+      "translation_time": 4.15,
+      "validation_status": "valid",
+      "correction_attempts": 0,
+      "routing_decision": "AUTO_APPROVED",
+      "routing_reason": "Parsed from CrewAI report",
+      "python_code": "",
+      "tfl_flagged": false
+    }
+  ],
+  "report_path": "reports/crewai_report_20260625_160850.md",
+  "raw_output": "# ClinTranslate \u2014 GxP Clinical Data Validation Report\n## Pipeline Execution Report | Generated: 2025-01-15\n\n---\n\n# SECTION 1: BENCHMARK SUMMARY TABLE\n\n| filename | sas_loc | py_loc | cosine_score | translation_time_sec | time_saved_hrs | pct_saved | validation_status | routing_decision |\n|---|---|---|---|---|---|---|---|---|\n| macros/utils.sas | 52 | 89 | 0.87 | 3.21 | 2.4991 | 99.96% | valid | AUTO_APPROVED |\n| macros/formats.sas | 68 | 112 | 0.82 | 4.15 | 2.4988 | 99.95% | valid | AUTO_APPROVED |\n| macros/derive_vars.sas | 95 | 147 | N/A | 8.74 | 2.4976 | 99.90% | corrected | REVIEW_REQUIRED |\n\n> **Calculation Notes:**\n> - Manual baseline = 2.5 hours per program\n> - `time_saved_hrs = 2.5 - (translation_time_sec / 3600)`\n> - `pct_saved = (time_saved_hrs / 2.5) * 100`\n> - utils.sas: `2.5 - (3.21/3600) = 2.5 - 0.000892 = 2.4991 hrs` \u2192 `(2.4991/2.5)*100 = 99.96%`\n> - formats.sas: `2.5 - (4.15/3600) = 2.5 - 0.001153 = 2.4988 hrs` \u2192 `(2.4988/2.5)*100 = 99.95%`\n> - derive_vars.sas: `2.5 - (8.74/3600) = 2.5 - 0.002428 = 2.4976 hrs` \u2192 `(2.4976/2.5)*100 = 99.90%`\n\n---\n\n# SECTION 2: PER-FILE VALIDATION REPORTS\n\n---\n\n## \ud83d\udcc4 Validation Report 001 \u2014 `macros/utils.sas` \u2192 `utils.py`\n\n### Routing Decision: \ud83d\udfe2 AUTO_APPROVED\n\n| Metric | Value |\n|---|---|\n| **SAS Lines of Code (LOC)** | 52 |\n| **Python Lines of Code (LOC)** | 89 |\n| **LOC Expansion Ratio** | 1.71\u00d7 |\n| **Cosine Similarity Score** | 0.87 |\n| **Translation Time (sec)** | 3.21 |\n| **Manual Baseline (hrs)** | 2.50 |\n| **Time Saved (hrs)** | 2.4991 |\n| **Percent Saved** | 99.96% |\n| **Correction Attempts** | 0 |\n| **Confidence Tier** | HIGH |\n| **Validation Status** | valid |\n| **Routing Decision** | AUTO_APPROVED |\n| **Routing Reason** | Cosine \u2265 0.80 \u2713 \\| Status = valid \u2713 \\| SAS LOC \u2264 200 \u2713 |\n\n---\n\n### \u2705 GxP Reviewer Checklist \u2014 `utils.py`\n\n> Per 21 CFR Part 11 \u00a711.10(a) and ICH Q10 \u2014 Pharmaceutical Quality System requirements.\n> Reviewer must initial each item and sign below.\n\n- [ ] **CHK-001 \u2014 Functional Equivalence Verified:** Translated Python functions produce outputs semantically equivalent to source SAS macros (`check_dataset_exists`, `nobs`, `upcase_vars`, `strip_vars`, `put_log`, `today_fmt`, `safe_divide`). Reviewer has executed side-by-side comparison or reviewed cosine similarity score (0.87 \u2265 0.80 threshold). _Reviewer Initials: _____ Date: ______\n\n- [ ] **CHK-002 \u2014 SAS Construct Mapping Documented:** All SAS-to-Python construct mappings are annotated inline (e.g., `%MACRO/%MEND` \u2192 Python `def`, `%PUT` \u2192 `logger.info()`, `UPCASE()` \u2192 `str.upper()`, `STRIP()` \u2192 `str.strip()`, `IFN()` \u2192 `np.where()`). Inline comments reference originating SAS syntax. _Reviewer Initials: _____ Date: ______\n\n- [ ] **CHK-003 \u2014 No Hardcoded Clinical Values:** No patient identifiers, trial identifiers, or hardcoded clinical constants appear in the translated utility code. Functions are parameterized and study-agnostic. _Reviewer Initials: _____ Date: ______\n\n- [ ] **CHK-004 \u2014 Logging and Auditability Confirmed:** Python `logging` module replaces all SAS `%PUT` statements. Log output includes timestamp, severity level, and function context tags (e.g., `[CHECK_DATASET]`, `[NOBS]`, `[UPCASE_VARS]`). Audit trail is compliant with 21 CFR Part 11 \u00a711.10(e). _Reviewer Initials: _____ Date: ______\n\n- [ ] **CHK-005 \u2014 Dependency Chain Validated:** `utils.py` is classified as Tier 1 (no upstream dependencies). Import block (`pandas`, `numpy`, `logging`, `os`, `datetime`, `typing`) contains only standard/approved libraries. No circular imports. Downstream consumers (`formats.py`, `derive_vars.py`) import this module correctly. _Reviewer Initials: _____ Date: ______\n\n**Lead Reviewer Sign-Off:**\n| Role | Name | Signature | Date |\n|---|---|---|---|\n| Statistical Programmer | | | |\n| QA Representative | | | |\n| Clinical Data Manager | | | |\n\n---\n\n### \ud83d\udce6 Translated Python Code \u2014 `utils.py`\n\n```python\n# =============================================================================\n# FILE: macros/utils.sas \u2192 utils.py\n# TIER: 1 \u2014 Foundation (No Dependencies)\n# ROLE: Core utility functions used by all downstream layers\n# SAS CONSTRUCTS: %MACRO/%MEND, %PUT, %LET, %IF/%THEN, DATA step checks\n# TRANSLATED: SAS macros \u2192 Python functions\n# VALIDATION STATUS: valid | ROUTING: AUTO_APPROVED | COSINE: 0.87\n# =============================================================================\n\nimport pandas as pd\nimport numpy as np\nimport logging\nimport os\nfrom datetime import datetime\nfrom typing import Optional, Union\n\n# Configure logging \u2014 replaces SAS %PUT statements\nlogging.basicConfig(\n    level=logging.INFO,\n    format=\"%(asctime)s [%(levelname)s] %(message)s\",\n    datefmt=\"%Y-%m-%d %H:%M:%S\"\n)\nlogger = logging.getLogger(__name__)\n\n\n# -----------------------------------------------------------------------------\n# SAS: %MACRO check_dataset_exists(dsn=) / %MEND check_dataset_exists;\n# Python: check_dataset_exists(df, name)\n# Maps: SAS EXIST() function \u2192 isinstance check + None guard\n# -----------------------------------------------------------------------------\ndef check_dataset_exists(df: Optional[pd.DataFrame], name: str) -> bool:\n    \"\"\"\n    Replaces SAS %MACRO check_dataset_exists.\n    SAS: %IF %SYSFUNC(EXIST(&dsn.)) %THEN %DO ... %END;\n    Python: isinstance check on DataFrame\n    \"\"\"\n    if df is None or not isinstance(df, pd.DataFrame):\n        logger.warning(f\"[CHECK_DATASET] Dataset '{name}' does not exist or is None.\")\n        return False\n    if df.empty:\n        logger.warning(f\"[CHECK_DATASET] Dataset '{name}' exists but is EMPTY (0 rows).\")\n        return False\n    logger.info(f\"[CHECK_DATASET] Dataset '{name}' OK \u2014 {len(df)} rows, {len(df.columns)} cols.\")\n    return True\n\n\n# -----------------------------------------------------------------------------\n# SAS: %MACRO nobs(dsn=) \u2192 returns number of observations\n# Python: nobs(df) \u2192 integer row count\n# Maps: SAS NOBS= dataset option \u2192 len(df)\n# -----------------------------------------------------------------------------\ndef nobs(df: pd.DataFrame, name: str = \"dataset\") -> int:\n    \"\"\"\n    Replaces SAS %MACRO nobs / PROC SQL COUNT(*).\n    SAS: %LET n = %SYSFUNC(ATTRN(%SYSFUNC(OPEN(&dsn.)), NOBS));\n    Python: len(df)\n    \"\"\"\n    n = len(df)\n    logger.info(f\"[NOBS] '{name}' has {n} observations.\")\n    return n\n\n\n# -----------------------------------------------------------------------------\n# SAS: %MACRO upcase_vars(dsn=, varlist=) \u2014 uppercases character variables\n# Python: upcase_vars(df, cols) \u2192 DataFrame with uppercased string columns\n# Maps: SAS UPCASE() function in DATA step \u2192 str.upper()\n# -----------------------------------------------------------------------------\ndef upcase_vars(df: pd.DataFrame, cols: list) -> pd.DataFrame:\n    \"\"\"\n    Replaces SAS DATA step with UPCASE() applied across varlist.\n    SAS: data &dsn.; set &dsn.; array _ch[*] $ &varlist.;\n         do i=1 to dim(_ch); _ch[i]=upcase(_ch[i]); end; run;\n    Python: df[col].str.upper()\n    \"\"\"\n    df = df.copy()\n    for col in cols:\n        if col in df.columns:\n            # SAS: UPCASE(variable) \u2192 Python: str.upper()\n            df[col] = df[col].str.upper()\n            logger.info(f\"[UPCASE_VARS] Uppercased column: {col}\")\n        else:\n            logger.warning(f\"[UPCASE_VARS] Column '{col}' not found \u2014 skipped.\")\n    return df\n\n\n# -----------------------------------------------------------------------------\n# SAS: %MACRO strip_vars(dsn=, varlist=) \u2014 strips leading/trailing blanks\n# Python: strip_vars(df, cols) \u2192 DataFrame with stripped string columns\n# Maps: SAS STRIP() \u2192 str.strip()\n# -----------------------------------------------------------------------------\ndef strip_vars(df: pd.DataFrame, cols: list) -> pd.DataFrame:\n    \"\"\"\n    Replaces SAS STRIP() applied in DATA step across a varlist.\n    SAS: data &dsn.; set &dsn.; &var. = strip(&var.); run;\n    Python: df[col].str.strip()\n    \"\"\"\n    df = df.copy()\n    for col in cols:\n        if col in df.columns:\n            # SAS: STRIP(variable) \u2192 Python: str.strip(",
+  "stats": {
+    "auto_approved": 2,
+    "review_required": 0,
+    "rejected": 0,
+    "syntax_valid": 2,
+    "tfl_flagged": 0,
+    "avg_cosine": 0.845,
+    "avg_time_sec": 3.7,
+    "total_sas_loc": 120,
+    "total_py_loc": 201
+  }
+}
