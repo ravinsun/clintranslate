@@ -5,3 +5,7 @@ chroma_store_v2/
 __pycache__/
 *.pyc
 .DS_Store
+chroma_store_v3/
+chroma_store_crew/
+venv311/
+venv311_crew/
